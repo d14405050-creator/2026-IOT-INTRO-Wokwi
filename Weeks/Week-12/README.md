@@ -8,6 +8,7 @@
 ![img](img/img02.png)
 ![img](img/img03.png)
 ![img](img/img04.gif)
+![img](img/img05.gif)
 
 ## 2. 環境準備
 
