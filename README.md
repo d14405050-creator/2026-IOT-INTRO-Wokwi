@@ -2,6 +2,24 @@
 
 本 repository 用於「物聯網概論」課程每週實作與作業提交。
 
+## 開發環境需求（所有週次）
+
+每個 task 都用 `make` 啟動 Wokwi 模擬器（背後呼叫 `tools/wokwi_run.py`）。請先安裝 **Python 3** 與 **make**：
+
+| OS | 安裝方式 |
+|----|----------|
+| macOS | `brew install python make`（make 通常已內建） |
+| Linux | `sudo apt install python3 make`（Debian/Ubuntu） |
+| Windows | 1. 至 [python.org](https://www.python.org/downloads/) 安裝 Python（勾選 *Add to PATH*）<br>2. 用 [Chocolatey](https://chocolatey.org/) `choco install make`、[Scoop](https://scoop.sh/) `scoop install make`，或改用 **Git Bash**（內含 make） |
+
+使用方式（在任一 task 資料夾內）：
+
+```bash
+make            # 啟動模擬（請先在 VS Code 開啟 Wokwi 模擬器）
+```
+
+> Makefile 會自動選用 `python3`（macOS/Linux）或 `python`（Windows）。如需指定直譯器：`make PYTHON=python3.12`。
+
 ## 通用規範（所有週次）
 
 ### 1. 每週進度放置原則
