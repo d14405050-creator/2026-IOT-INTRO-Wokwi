@@ -1,12 +1,22 @@
 #!/usr/bin/env python3
-"""Run a MicroPython script on a Wokwi RFC2217 serial port with proper timing."""
+"""Run a MicroPython script on a Wokwi RFC2217 serial port with proper timing.
+
+Before running the target script, every ``*.py`` module found in the repo-root
+``lib/`` folder is uploaded to the device filesystem (e.g. ``ssd1306.py``), so
+scripts can ``import`` drivers that are not baked into the firmware.
+"""
+import os
 import sys
 import time
 import serial
 
 HOST = "localhost"
 PORT = 4000
-DELAY = 0.15  # seconds between control sequences — tunable
+
+# repo root = parent of the tools/ directory that holds this file
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+LIB_DIR = os.path.join(ROOT, "lib")
+
 
 def read_until(ser, token: bytes, timeout: float = 10.0) -> bytes:
     buf = b""
@@ -19,6 +29,18 @@ def read_until(ser, token: bytes, timeout: float = 10.0) -> bytes:
                 return buf
     return buf
 
+
+def read_n_markers(ser, marker: bytes, count: int, timeout: float = 30.0) -> bytes:
+    """Read until `marker` has appeared `count` times (or timeout)."""
+    buf = b""
+    deadline = time.monotonic() + timeout
+    while buf.count(marker) < count and time.monotonic() < deadline:
+        chunk = ser.read(ser.inWaiting() or 1)
+        if chunk:
+            buf += chunk
+    return buf
+
+
 def enter_raw_repl(ser):
     ser.write(b"\r\x03\r\x03")     # Ctrl+C twice — interrupt running code
     # Wait for ">>> " to confirm REPL is ready before sending Ctrl+A.
@@ -27,7 +49,6 @@ def enter_raw_repl(ser):
     data = read_until(ser, b">>> ")
     if b">>> " not in data:
         raise RuntimeError(f"REPL prompt not found; got: {data!r}")
-    # flush any extra prompts produced by double Ctrl+C
     time.sleep(0.05)
     ser.flushInput()
     ser.write(b"\r\x01")            # Ctrl+A — enter raw REPL
@@ -35,27 +56,61 @@ def enter_raw_repl(ser):
     if b"raw REPL; CTRL-B to exit\r\n>" not in data:
         raise RuntimeError(f"could not enter raw REPL; got: {data!r}")
 
+
 def soft_reset(ser):
     ser.write(b"\x04")              # Ctrl+D — soft reset
     data = read_until(ser, b"raw REPL; CTRL-B to exit\r\n")
     if b"raw REPL; CTRL-B to exit\r\n" not in data:
         raise RuntimeError(f"soft reset failed; got: {data!r}")
 
+
 def exec_raw(ser, code: bytes):
-    # Write code followed by Ctrl+D to execute
+    r"""Execute code in raw REPL and return (stdout, stderr).
+
+    Raw-REPL response after Ctrl+D is:
+        b"OK" + <stdout> + b"\x04" + <stderr> + b"\x04" + b">"
+    so we wait for *two* b"\x04" markers before parsing.
+    """
     ser.write(code)
-    ser.write(b"\x04")
-    out = read_until(ser, b"\x04", timeout=30)
-    # Raw REPL response: b'\x04' + output + b'\x04' + error
-    if out.startswith(b"\x04"):
-        out = out[1:]
-    parts = out.split(b"\x04", 1)
-    stdout = parts[0]
+    ser.write(b"\x04")             # Ctrl+D — execute
+    ack = read_until(ser, b"OK", timeout=5)
+    if b"OK" not in ack:
+        raise RuntimeError(f"device did not accept code; got: {ack!r}")
+    out = read_n_markers(ser, b"\x04", 2, timeout=30)
+    parts = out.split(b"\x04")
+    stdout = parts[0] if len(parts) > 0 else b""
     stderr = parts[1] if len(parts) > 1 else b""
     return stdout, stderr
 
+
+def put_file(ser, name: str, data: bytes):
+    """Write `data` to a file named `name` on the device filesystem."""
+    code = (
+        "f=open(%r,'wb')\n" % name
+        + "f.write(%r)\n" % data
+        + "f.close()\n"
+    ).encode()
+    _, stderr = exec_raw(ser, code)
+    if stderr.strip():
+        raise RuntimeError(f"failed to upload {name}: {stderr!r}")
+
+
+def upload_libs(ser):
+    """Upload every *.py in the repo-root lib/ folder to the device."""
+    if not os.path.isdir(LIB_DIR):
+        return
+    for fname in sorted(os.listdir(LIB_DIR)):
+        if not fname.endswith(".py"):
+            continue
+        with open(os.path.join(LIB_DIR, fname), "rb") as f:
+            data = f.read()
+        print(f"Uploading lib/{fname} ({len(data)} bytes) ...")
+        put_file(ser, fname, data)
+
+
 def exit_raw_repl(ser):
     ser.write(b"\r\x02")            # Ctrl+B — back to friendly REPL
+
 
 def main():
     import argparse
@@ -80,17 +135,24 @@ def main():
         enter_raw_repl(ser)
         print("Soft resetting ...")
         soft_reset(ser)
+        upload_libs(ser)
         print(f"Running {script_path} ...")
         stdout, stderr = exec_raw(ser, code)
-        if stdout:
+        if stdout.strip():
+            sys.stdout.buffer.write(b"--- output ---\n")
             sys.stdout.buffer.write(stdout)
+            if not stdout.endswith(b"\n"):
+                sys.stdout.buffer.write(b"\n")
             sys.stdout.buffer.flush()
-        if stderr:
+        if stderr.strip():
+            sys.stderr.buffer.write(b"--- error ---\n")
             sys.stderr.buffer.write(stderr)
             sys.stderr.buffer.flush()
+            sys.exit(1)
     finally:
         exit_raw_repl(ser)
         ser.close()
+
 
 if __name__ == "__main__":
     main()
