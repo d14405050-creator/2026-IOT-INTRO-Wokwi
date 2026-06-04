@@ -168,7 +168,7 @@ git push -u origin week13-hw-<學號>
 
 ---
 
-## 助教驗收 Checklist（建議）
+## 助教驗收 Checklist
 - [ ] 看到 `task3a` 風格版型
 - [ ] 明顯動畫正在執行
 - [ ] 有可辨識中文字
