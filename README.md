@@ -51,3 +51,32 @@ make            # 啟動模擬（請先在 VS Code 開啟 Wokwi 模擬器）
 - 檔案位於正確週次與正確帳號資料夾。
 - 程式可執行。
 - 未修改他人作業或非本次作業檔案。
+
+---
+
+## Week 15 — ILI9341 彩屏 + MQ2 氣體感測器 + ThingsBoard
+
+從 Week 13 的 OLED + DHT22 出發，升級為 SPI 全彩 LCD，加入 MQ2 氣體感測器與按鈕觸發煙火動畫，最後透過 MQTT 上傳到 ThingsBoard Cloud。
+
+### Tasks
+
+| Task | 主題 | 詳細說明 | 主程式 | 重點 |
+|------|------|---------|--------|------|
+| 1 | ILI9341 彩屏 + DHT22 基礎 | [`Weeks/Week-15/in-class/task1/`](Weeks/Week-15/in-class/task1/) | `main.py` | SPI 通訊、LCD 文字顯示 |
+| 2 | MQ2 氣體感測 + 按鈕煙火 | [`Weeks/Week-15/in-class/task2/`](Weeks/Week-15/in-class/task2/) + [`task2.md`](Weeks/Week-15/in-class/task2/task2.md) | `main.py` | ADC 類比輸入、非線性校正（K=2.60, P=2.467） |
+| 2a | 中文點陣字 + Buffer Blit 加速 | [`Weeks/Week-15/in-class/task2a/`](Weeks/Week-15/in-class/task2a/) + [`task2a.md`](Weeks/Week-15/in-class/task2a/task2a.md) | `main.py` | MONO_HLSB framebuffer、RGB565 合成、Byte swap |
+| 3 | WiFi + MQTT 上傳 ThingsBoard | [`Weeks/Week-15/in-class/task3/`](Weeks/Week-15/in-class/task3/) + [`task3.md`](Weeks/Week-15/in-class/task3/task3.md) | `main.py` | umqtt.simple、telemetry JSON、firework_trigger 即時推送 |
+| 4 | ThingsBoard Dashboard + Alarm | [`Weeks/Week-15/in-class/task4/`](Weeks/Week-15/in-class/task4/) + [`task4.md`](Weeks/Week-15/in-class/task4/task4.md) | `main.py` | 5 個 Widget、Device Profile Alarm Rule、通知設定 |
+
+### 關鍵技術發現
+
+- **MQ2 非線性模型**: `PPM = K × (v/(1-v))^P` 比線性 `MAX_PPM=290` 更接近真實感測器特性
+- **Buffer Blit 優化**: 先合成 RGB565 framebuffer（8KB）再單次 SPI transaction，取代 2000+ 次 `pixel()` 呼叫
+- **`_window_and_data()`**: ILI9341 私有方法，可直接寫入 framebuffer 資料區塊
+- **umqtt.simple auth**: 需同時指定 `user=ACCESS_TOKEN` 與 `password=...`；缺其一會得到 error code 5（not authorized）
+- **fill_rect 記憶體陷阱**: `w × h × 2 bytes`，例如 240×107 會分配 51KB 導致失敗
+
+
+### 解答
+
+參考解答放在 [`Weeks/Week-15/solutions/`](Weeks/Week-15/solutions/)。
